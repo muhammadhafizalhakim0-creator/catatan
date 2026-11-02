@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Catatan</title>
+  <style>
+       * { box-sizing: border-box; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f4f5f7;
+      color: #1f2937;
+      max-width: 520px;
+      margin: 40px auto;
+      padding: 0 16px;
+    }
+
+    h1 { margin-bottom: 16px; }
+
+    form { display: flex; gap: 8px; margin-bottom: 12px; }
+
+    input {
+      flex: 1;
+      padding: 10px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 16px;
+    }
+    input:focus { outline: 2px solid #2563eb; border-color: transparent; }
+
+    button {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 8px;
+      background: #2563eb;
+      color: white;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    button:hover { background: #1d4ed8; }
+
+    ul { list-style: none; padding: 0; margin: 0; }
+
+    li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: white;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      border-radius: 10px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+      word-break: break-word;
+    }
+
+    /* Tombol Edit (tombol pertama di tiap item) mendorong kedua tombol ke kanan */
+    li button:first-of-type { margin-left: auto; background: #6b7280; }
+    li button:first-of-type:hover { background: #4b5563; }
+    li button:last-of-type { background: #dc2626; }
+    li button:last-of-type:hover { background: #b91c1c; }
+    li input { padding: 6px 10px; font-size: 15px; }
+    li button.simpan { background: #16a34a; }
+    li button.simpan:hover { background: #15803d; }
+    li button.batal { background: #6b7280; }
+    li button.batal:hover { background: #4b5563; }
+  </style>
+</head>
+<body>
+  <h1>Catatan</h1>
+  <form id="form">
+    <input id="text" placeholder="Tulis catatan..." required>
+    <button type="submit">Tambah</button>
+  </form>
+  <p id="pesan" style="color: crimson;"></p>
+  <ul id="list"></ul>
+  <ul id="list"></ul>
+
+  <script>
+        const list = document.getElementById('list');
+    const form = document.getElementById('form');
+    const input = document.getElementById('text');
+    const pesan = document.getElementById('pesan');
+
+    // Satu fungsi untuk semua permintaan ke server
+    async function kirim(url, options) {
+      try {
+        const res = await fetch(url, options);
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'Server menjawab error ' + res.status);
+        }
+        pesan.textContent = '';
+        return res;
+      } catch (err) {
+        if (err instanceof TypeError) {
+          pesan.textContent = 'Server tidak bisa dihubungi. Perubahan belum tersimpan.';
+        } else {
+          pesan.textContent = err.message;
+        }
+        return null;
+      }
+    }
+
+       async function load() {
+      const res = await kirim('/api/notes');
+      if (!res) return;
+      const notes = await res.json();
+      list.innerHTML = '';
+
+      notes.forEach(n => {
+        const li = document.createElement('li');
+        const teks = document.createElement('span');
+        teks.textContent = n.text;
+
+        const edit = document.createElement('button');
+        edit.textContent = 'Edit';
+        edit.onclick = () => mulaiEdit(li, n);
+
+        const del = document.createElement('button');
+        del.textContent = 'Hapus';
+        del.onclick = async () => {
+          const ok = await kirim('/api/notes/' + n.id, { method: 'DELETE' });
+          if (ok) load();
+        };
+
+        li.append(teks, edit, del);
+        list.appendChild(li);
+      });
+    }
+
+    function mulaiEdit(li, n) {
+      li.innerHTML = '';
+
+      const field = document.createElement('input');
+      field.value = n.text;
+
+      const simpan = document.createElement('button');
+      simpan.textContent = 'Simpan';
+      simpan.className = 'simpan';
+
+      const batal = document.createElement('button');
+      batal.textContent = 'Batal';
+      batal.className = 'batal';
+
+      async function kirimEdit() {
+        const baru = field.value.trim();
+        if (!baru) return;
+        const ok = await kirim('/api/notes/' + n.id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: baru })
+        });
+        if (ok) load();
+      }
+
+      simpan.onclick = kirimEdit;
+      batal.onclick = load;
+      field.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') kirimEdit();
+        if (e.key === 'Escape') load();
+      });
+
+      li.append(field, simpan, batal);
+      field.focus();
+      field.select();
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const ok = await kirim('/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: input.value })
+      });
+      if (ok) {
+        input.value = '';
+        load();
+      }
+    });
+
+    load();
+  </script>
+</body>
+</html>
