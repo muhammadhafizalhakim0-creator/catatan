@@ -2,9 +2,11 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Catatan</title>
   <style>
-       * { box-sizing: border-box; }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
 
     body {
       font-family: system-ui, sans-serif;
@@ -14,10 +16,10 @@
       margin: 40px auto;
       padding: 0 16px;
     }
-
-    h1 { margin-bottom: 16px; }
+    h1 { margin: 0 0 16px; }
 
     form { display: flex; gap: 8px; margin-bottom: 12px; }
+    #auth form { flex-direction: column; }
 
     input {
       flex: 1;
@@ -38,9 +40,21 @@
       cursor: pointer;
     }
     button:hover { background: #1d4ed8; }
+    button.abu { background: #6b7280; }
+    button.abu:hover { background: #4b5563; }
+    button.merah { background: #dc2626; }
+    button.merah:hover { background: #b91c1c; }
+    button.hijau { background: #16a34a; }
+    button.hijau:hover { background: #15803d; }
+
+    .baris { display: flex; gap: 8px; }
+    .baris button { flex: 1; padding: 10px; }
+
+    .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .header h1 { margin: 0; }
+    .user { display: flex; align-items: center; gap: 10px; font-size: 14px; }
 
     ul { list-style: none; padding: 0; margin: 0; }
-
     li {
       display: flex;
       align-items: center;
@@ -52,34 +66,61 @@
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
       word-break: break-word;
     }
+    li span { flex: 1; }
+    li input { padding: 6px 10px; font-size: 15px; min-width: 0; }
 
-    /* Tombol Edit (tombol pertama di tiap item) mendorong kedua tombol ke kanan */
-    li button:first-of-type { margin-left: auto; background: #6b7280; }
-    li button:first-of-type:hover { background: #4b5563; }
-    li button:last-of-type { background: #dc2626; }
-    li button:last-of-type:hover { background: #b91c1c; }
-    li input { padding: 6px 10px; font-size: 15px; }
-    li button.simpan { background: #16a34a; }
-    li button.simpan:hover { background: #15803d; }
-    li button.batal { background: #6b7280; }
-    li button.batal:hover { background: #4b5563; }
+    #pesan { color: crimson; min-height: 1.2em; }
   </style>
 </head>
 <body>
-  <h1>Catatan</h1>
-  <form id="form">
-    <input id="text" placeholder="Tulis catatan..." required>
-    <button type="submit">Tambah</button>
-  </form>
-  <p id="pesan" style="color: crimson;"></p>
-  <ul id="list"></ul>
-  <ul id="list"></ul>
+  <p id="pesan"></p>
+
+  <!-- Layar login -->
+  <section id="auth" hidden>
+    <h1>Catatan</h1>
+    <form id="formAuth">
+      <input id="username" placeholder="Username" autocomplete="username" required>
+      <input id="password" type="password" placeholder="Password (min. 8 karakter)" autocomplete="current-password" required>
+      <div class="baris">
+        <button type="submit">Masuk</button>
+        <button type="button" id="daftar" class="abu">Daftar</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- Layar aplikasi -->
+  <section id="app" hidden>
+    <div class="header">
+      <h1>Catatan</h1>
+      <div class="user">
+        <span id="who"></span>
+        <button id="keluar" class="abu">Keluar</button>
+      </div>
+    </div>
+    <form id="form">
+      <input id="text" placeholder="Tulis catatan..." required>
+      <button type="submit">Tambah</button>
+    </form>
+    <ul id="list"></ul>
+  </section>
 
   <script>
-        const list = document.getElementById('list');
-    const form = document.getElementById('form');
-    const input = document.getElementById('text');
-    const pesan = document.getElementById('pesan');
+    const $ = (id) => document.getElementById(id);
+    const authBox = $('auth'), appBox = $('app'), pesan = $('pesan');
+    const list = $('list'), input = $('text');
+
+    function tampilkanLogin() {
+      authBox.hidden = false;
+      appBox.hidden = true;
+      list.innerHTML = '';
+    }
+
+    function tampilkanApp(username) {
+      authBox.hidden = true;
+      appBox.hidden = false;
+      $('who').textContent = username;
+      load();
+    }
 
     // Satu fungsi untuk semua permintaan ke server
     async function kirim(url, options) {
@@ -87,21 +128,50 @@
         const res = await fetch(url, options);
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
+          if (res.status === 401 && url !== '/api/login') tampilkanLogin();
           throw new Error(data.error || 'Server menjawab error ' + res.status);
         }
         pesan.textContent = '';
         return res;
       } catch (err) {
-        if (err instanceof TypeError) {
-          pesan.textContent = 'Server tidak bisa dihubungi. Perubahan belum tersimpan.';
-        } else {
-          pesan.textContent = err.message;
-        }
+        pesan.textContent = err instanceof TypeError
+          ? 'Server tidak bisa dihubungi. Perubahan belum tersimpan.'
+          : err.message;
         return null;
       }
     }
 
-       async function load() {
+    function jsonBody(data) {
+      return {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      };
+    }
+
+    // ----- Login / daftar / keluar -----
+    async function auth(path) {
+      const res = await kirim(path, jsonBody({
+        username: $('username').value,
+        password: $('password').value
+      }));
+      if (!res) return;
+      const data = await res.json();
+      $('password').value = '';
+      tampilkanApp(data.username);
+    }
+
+    $('formAuth').addEventListener('submit', (e) => { e.preventDefault(); auth('/api/login'); });
+    $('daftar').onclick = () => {
+      if ($('formAuth').reportValidity()) auth('/api/register');
+    };
+    $('keluar').onclick = async () => {
+      await kirim('/api/logout', { method: 'POST' });
+      tampilkanLogin();
+    };
+
+    // ----- Catatan -----
+    async function load() {
       const res = await kirim('/api/notes');
       if (!res) return;
       const notes = await res.json();
@@ -114,10 +184,12 @@
 
         const edit = document.createElement('button');
         edit.textContent = 'Edit';
+        edit.className = 'abu';
         edit.onclick = () => mulaiEdit(li, n);
 
         const del = document.createElement('button');
         del.textContent = 'Hapus';
+        del.className = 'merah';
         del.onclick = async () => {
           const ok = await kirim('/api/notes/' + n.id, { method: 'DELETE' });
           if (ok) load();
@@ -136,11 +208,11 @@
 
       const simpan = document.createElement('button');
       simpan.textContent = 'Simpan';
-      simpan.className = 'simpan';
+      simpan.className = 'hijau';
 
       const batal = document.createElement('button');
       batal.textContent = 'Batal';
-      batal.className = 'batal';
+      batal.className = 'abu';
 
       async function kirimEdit() {
         const baru = field.value.trim();
@@ -165,20 +237,26 @@
       field.select();
     }
 
-    form.addEventListener('submit', async (e) => {
+    $('form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const ok = await kirim('/api/notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: input.value })
-      });
+      const ok = await kirim('/api/notes', jsonBody({ text: input.value }));
       if (ok) {
         input.value = '';
         load();
       }
     });
 
-    load();
+    // ----- Saat halaman dibuka: sudah login atau belum? -----
+    (async () => {
+      try {
+        const res = await fetch('/api/me');
+        if (res.ok) tampilkanApp((await res.json()).username);
+        else tampilkanLogin();
+      } catch {
+        tampilkanLogin();
+        pesan.textContent = 'Server tidak bisa dihubungi.';
+      }
+    })();
   </script>
 </body>
 </html>
